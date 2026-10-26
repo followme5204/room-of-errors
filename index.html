@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>Room of Errors - 복강경 담낭절제술 후 환자</title>
+<script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
+<style>
+  *{box-sizing:border-box}
+  body{margin:0;font-family:"Malgun Gothic","Apple SD Gothic Neo",sans-serif}
+  #hud{position:fixed;top:0;left:0;right:0;z-index:10;display:flex;flex-wrap:wrap;gap:6px;justify-content:space-between;
+       padding:8px 10px;background:rgba(20,30,45,.85);color:#fff;font-size:14px}
+  #hud b{color:#ffd166}
+  #vitals{font-family:Consolas,monospace}
+  .btn{border:0;border-radius:8px;padding:10px 14px;font-size:15px;cursor:pointer;font-family:inherit}
+  .b-red{background:#d62839;color:#fff}.b-green{background:#2a9d8f;color:#fff}.b-gray{background:#dde1e7;color:#222}.b-blue{background:#1d4e89;color:#fff}
+  #endBtn{position:fixed;bottom:14px;right:14px;z-index:10}
+  #chartBtn{position:fixed;bottom:14px;left:14px;z-index:10}
+  .overlay{position:fixed;inset:0;z-index:20;background:rgba(10,15,25,.75);display:flex;align-items:center;justify-content:center;padding:16px}
+  .card{background:#fff;border-radius:14px;max-width:560px;width:100%;max-height:88vh;overflow:auto;padding:20px;line-height:1.55;font-size:15px}
+  .card h2{margin:0 0 8px;font-size:20px;color:#1d4e89}
+  .card h3{margin:14px 0 4px;font-size:16px}
+  .card table{border-collapse:collapse;width:100%;font-size:14px}
+  .card td{border:1px solid #ddd;padding:5px 7px;vertical-align:top}
+  .row{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}
+  .hidden{display:none!important}
+  #toast{position:fixed;top:58px;left:50%;transform:translateX(-50%);z-index:15;background:#fff3cd;color:#5c4400;
+         border:2px solid #f0c040;border-radius:10px;padding:10px 14px;max-width:92%;font-size:15px;display:none}
+  .ok{color:#2a9d8f;font-weight:bold}.ng{color:#d62839;font-weight:bold}
+</style>
+<script>
+// 마우스를 올리면 살짝 빛나게
+AFRAME.registerComponent('hoverable',{init(){const el=this.el;
+  el.addEventListener('mouseenter',()=>el.setAttribute('material','emissive','#444'));
+  el.addEventListener('mouseleave',()=>el.setAttribute('material','emissive','#000'));}});
+// 클릭하면 해당 항목 패널 열기
+AFRAME.registerComponent('item',{schema:{type:'string'},init(){
+  this.el.addEventListener('click',()=>window.openItem&&window.openItem(this.data));}});
+</script>
+</head>
+<body>
+
+<!-- 상단 정보창 -->
+<div id="hud">
+  <span>⏱ <b id="timer">10:00</b></span>
+  <span>발견 <b id="found">0</b>/8</span>
+  <span id="vitals">BP 140/80 · PR 88 · RR 18 · SpO₂ 96% · NRS 6</span>
+</div>
+<div id="toast"></div>
+<button id="chartBtn" class="btn b-blue">📋 처방·차트</button>
+<button id="endBtn" class="btn b-red">종료 · 결과</button>
+
+<!-- 시작 화면 -->
+<div id="intro" class="overlay"><div class="card">
+  <h2>Room of Errors</h2>
+  <b>복강경 담낭절제술 후 환자의 안전위험 및 이상징후 인지</b>
+  <h3>환자</h3>
+  나예민 / 여 / 60세 · Acute cholecystitis → 금일 Lap. cholecystectomy 후 병동 복귀 (도착 1시간 후 진입)<br>
+  과거력: 뇌경색·고혈압·고지혈증 · <b>Lt. breast cancer → Lt. MRM with ALND (5년 전) → Lt. arm save</b>
+  <h3>인계 간호사</h3>
+  "1시간 전 병동 도착 시 JP drain은 혈성 20 mL였고, IV PCA 적용 중이며, Lt. arm save 처방 있습니다."
+  <h3>과제</h3>
+  병실에 <b>안전 오류가 숨어 있습니다</b>(종류·위치 비공개). 처방과 병실을 대조해 오류를 찾아 교정하세요. 제한시간 <b>10분</b>.<br>
+  정상 항목을 오류로 보고하면 1건당 -2점입니다.
+  <h3>조작법</h3>
+  PC: 마우스 드래그로 둘러보기, W·A·S·D로 이동, 물건 클릭<br>
+  휴대폰: 화면을 끌어 둘러보기, 물건 터치
+  <div class="row"><button id="startBtn" class="btn b-green">시작하기</button></div>
+</div></div>
+
+<!-- 항목 패널 -->
+<div id="panel" class="overlay hidden"><div class="card">
+  <h2 id="pTitle"></h2>
+  <div id="pBody"></div>
+  <div class="row" id="pBtns"></div>
+</div></div>
+
+<!-- 결과 화면 -->
+<div id="result" class="overlay hidden"><div class="card" id="resultBody"></div></div>
+
+<a-scene renderer="antialias:true" cursor="rayOrigin: mouse" raycaster="objects: .clickable"
+         vr-mode-ui="enabled:true" background="color:#dfe7ee">
+  <a-entity light="type:ambient;intensity:0.75"></a-entity>
+  <a-entity light="type:directional;intensity:0.6" position="1 3 1"></a-entity>
+
+  <!-- 방 -->
+  <a-plane rotation="-90 0 0" width="8" height="8" color="#c9c2b6" position="0 0 -2"></a-plane>
+  <a-plane width="8" height="3" color="#eef2f5" position="0 1.5 -4.2"></a-plane>
+  <a-plane width="8" height="3" color="#e7edf1" position="-3.2 1.5 -2" rotation="0 90 0"></a-plane>
+  <a-plane width="8" height="3" color="#e7edf1" position="3.2 1.5 -2" rotation="0 -90 0"></a-plane>
+  <a-plane width="1.4" height="0.9" color="#a9d3f0" position="1.4 1.7 -4.18"></a-plane>
+
+  <!-- 침대 프레임 -->
+  <a-box width="2.1" height="0.35" depth="0.95" color="#9aa3ad" position="0 0.38 -2.5"></a-box>
+  <!-- 다리쪽 매트리스 (고정) -->
+  <a-box width="1.35" height="0.12" depth="0.9" color="#f4f4f4" position="0.27 0.62 -2.5"></a-box>
+  <!-- 하체 · 이불 -->
+  <a-box width="0.7" height="0.14" depth="0.45" color="#8fb3d9" position="0.75 0.75 -2.5"></a-box>
+  <!-- 복부 -->
+  <a-box width="0.4" height="0.17" depth="0.42" color="#bcd6e8" position="0.2 0.76 -2.5"></a-box>
+  <!-- E2: RUQ 드레싱 oozing -->
+  <a-box class="clickable" hoverable item="e2" width="0.13" height="0.03" depth="0.11" color="#c94b4b" position="0.08 0.86 -2.38"></a-box>
+  <!-- 정상: 하복부 드레싱 2곳 -->
+  <a-box class="clickable" hoverable item="n_dress" width="0.08" height="0.025" depth="0.07" color="#ffffff" position="0.3 0.86 -2.58"></a-box>
+  <a-box class="clickable" hoverable item="n_dress" width="0.08" height="0.025" depth="0.07" color="#ffffff" position="0.3 0.86 -2.44"></a-box>
+
+  <!-- 침상머리 (E7: 0° flat) — 상체가 함께 움직임 -->
+  <a-entity id="headrest" position="-0.4 0.68 -2.5" rotation="0 0 0">
+    <a-box class="clickable" hoverable item="e7" width="0.65" height="0.12" depth="0.9" color="#f4f4f4" position="-0.33 -0.06 0"></a-box>
+    <a-box width="0.25" height="0.08" depth="0.5" color="#ffffff" position="-0.52 0.04 0"></a-box>
+    <a-sphere class="clickable" hoverable item="patient" radius="0.11" color="#f1c9a5" position="-0.5 0.15 0"></a-sphere>
+    <a-box width="0.45" height="0.18" depth="0.42" color="#bcd6e8" position="-0.15 0.09 0"></a-box>
+    <!-- 왼팔 (먼 쪽) + E6 BP cuff -->
+    <a-box width="0.55" height="0.08" depth="0.09" color="#f1c9a5" position="-0.05 0.06 -0.27"></a-box>
+    <a-box id="cuff" class="clickable" hoverable item="e6" width="0.16" height="0.11" depth="0.12" color="#1f3c88" position="-0.2 0.06 -0.27"></a-box>
+    <!-- 오른팔 (가까운 쪽) + 정맥관 + E1 손목밴드 -->
+    <a-box width="0.55" height="0.08" depth="0.09" color="#f1c9a5" position="-0.05 0.06 0.27"></a-box>
+    <a-box class="clickable" hoverable item="n_iv" width="0.06" height="0.03" depth="0.06" color="#ffffff" position="0.08 0.11 0.27"></a-box>
+    <a-box id="band" class="clickable" hoverable item="e1" width="0.04" height="0.1" depth="0.11" color="#f2e86d" position="0.18 0.06 0.27"></a-box>
+  </a-entity>
+
+  <!-- Side rail: E8 가까운 쪽 내려감 / 정상: 반대편 올라감 -->
+  <a-box id="railNear" class="clickable" hoverable item="e8" width="0.8" height="0.22" depth="0.03" color="#6c7a89" position="-0.25 0.33 -2.0"></a-box>
+  <a-box class="clickable" hoverable item="n_rail" width="0.8" height="0.22" depth="0.03" color="#6c7a89" position="-0.25 0.86 -3.0"></a-box>
+  <!-- E8: 바닥에 떨어진 call bell -->
+  <a-box id="bell" class="clickable" hoverable item="e8" width="0.09" height="0.04" depth="0.13" color="#e63946" position="0.45 0.02 -1.75"></a-box>
+  <!-- E7: 침대 리모컨 -->
+  <a-box class="clickable" hoverable item="e7" width="0.06" height="0.03" depth="0.14" color="#333" position="0.9 0.7 -2.05"></a-box>
+
+  <!-- E3: JP drain bulb (부풀어 있고 침대 아래로 늘어짐) -->
+  <a-cylinder id="tube" radius="0.006" height="0.7" color="#e8e8e8" position="0.05 0.45 -1.97"></a-cylinder>
+  <a-sphere id="bulbLiquid" radius="0.055" color="#b3001b" position="0.05 0.08 -1.97" scale="1 1.1 1"></a-sphere>
+  <a-sphere id="bulb" class="clickable" hoverable item="e3" radius="0.075" color="#ffffff" opacity="0.45" transparent="true" position="0.05 0.1 -1.97" scale="1 1.3 1"></a-sphere>
+
+  <!-- 수액걸이 -->
+  <a-cylinder radius="0.015" height="1.9" color="#aaa" position="-0.95 0.95 -1.85"></a-cylinder>
+  <a-box class="clickable" hoverable item="n_fluid" width="0.16" height="0.24" depth="0.05" color="#d8ecff" opacity="0.85" transparent="true" position="-0.95 1.72 -1.85"></a-box>
+  <!-- E4: 수액조절기 -->
+  <a-box class="clickable" hoverable item="e4" width="0.22" height="0.15" depth="0.12" color="#5d6d7e" position="-0.95 1.25 -1.78">
+    <a-text id="pumpText" value="20 mL/hr" color="#ff5555" align="center" width="0.9" position="0 0 0.065"></a-text>
+  </a-box>
+  <!-- 정상: PCA 기기 -->
+  <a-sphere class="clickable" hoverable item="n_pca" radius="0.07" color="#f7f7f7" position="-0.78 1.48 -1.85"></a-sphere>
+  <a-cylinder radius="0.004" height="0.6" color="#e8e8e8" position="-0.78 1.15 -1.85"></a-cylinder>
+  <!-- E5: PCA clamp 잠김 -->
+  <a-box id="clamp" class="clickable" hoverable item="e5" width="0.05" height="0.035" depth="0.05" color="#e63946" position="-0.78 1.02 -1.85"></a-box>
+
+  <!-- 협탁 + 차트 -->
+  <a-box width="0.5" height="0.7" depth="0.45" color="#b08968" position="1.45 0.35 -2.0"></a-box>
+  <a-box class="clickable" hoverable item="chart" width="0.24" height="0.02" depth="0.32" color="#2b6cb0" position="1.45 0.71 -2.0"></a-box>
+
+  <!-- 카메라 -->
+  <a-entity position="0.3 0 -0.6">
+    <a-camera position="0 1.55 0" look-controls wasd-controls="acceleration:20"></a-camera>
+  </a-entity>
+  <a-entity laser-controls="hand: right" raycaster="objects: .clickable"></a-entity>
+</a-scene>
+
+<script>
+const LIMIT = 600;
+const ITEMS = {
+  e1:{err:true,w:5,title:'손목밴드',see:'밴드: 나예민 / 등록번호 <b>10234576</b><br>차트 등록번호: <b>10234567</b>',fix:'개방형 질문(성함·생년월일)으로 환자를 확인하고 정확한 밴드로 교체',why:'2가지 이상 식별정보로 환자 확인 (의료기관평가인증원, 2026)',btn:'오류 → 밴드 교체'},
+  e2:{err:true,w:10,title:'우상복부 드레싱 · JP 배액',see:'RUQ 드레싱에 선홍색 혈액이 번져 있음(oozing).<br>JP bulb 안 <b>선홍색 배액 약 100 mL</b> (도착 시 혈성 20 mL)',fix:'V/S 재측정 후 담당의에게 SBAR 즉시 보고 → 구두처방 "수액 500 mL bolus" read-back 후 주입',why:'1시간 내 급격한 증가·선홍색 배액은 출혈 시사 → 즉시 보고 (Cleveland Clinic, 2023; MSKCC, 2023)',btn:'오류 → SBAR 보고'},
+  e3:{err:true,w:10,title:'JP drain bulb',see:'JP bulb가 둥글게 <b>부풀어 있음</b>(음압 소실). 배액 line이 침상 아래로 늘어져 고정되어 있지 않음.<br>처방: 음압 유지(bulb 압축 상태 유지)',fix:'bulb를 압축한 뒤 마개를 잠그고 line을 환자복에 고정',why:'음압이 없으면 배액이 덜 되어 출혈량이 과소평가됨 (Cleveland Clinic, 2023; MSKCC, 2023)',btn:'오류 → bulb 압축·고정'},
+  e4:{err:true,w:10,title:'수액조절기',see:'Plasma 1 L 주입 속도: <b>20 mL/hr</b><br>처방: 80 mL/hr',fix:'처방 속도 80 mL/hr로 교정하고 5 Rights 재확인',why:'5 Rights에 따른 주입 속도 확인 (의료기관평가인증원, 2026)',btn:'오류 → 80 mL/hr로 교정'},
+  e5:{err:true,w:10,title:'PCA line clamp',see:'PCA line을 따라가 보니 <b>clamp가 잠겨 있음</b> → 기저유량·bolus가 들어가지 않음.<br>환자: "눌러도 별로 안 나아지는 것 같아요."',fix:'clamp를 열고 line을 환자까지 추적, 통증(NRS) 재사정',why:'근무 시작 시 PCA 작동·clamp 개방 확인 (RHW, 2025; Kent CHFT, 2026)',btn:'오류 → clamp 개방'},
+  e6:{err:true,w:5,title:'왼팔 BP cuff',see:'<b>Lt. arm 상완에 BP cuff</b>가 감겨 있음.<br>처방: Lt. arm save (BP·IV·채혈 금지)',fix:'cuff를 제거하고 Rt. arm에서 V/S 측정',why:'ALND 후 위험측 상지 BP·채혈·IV 회피 (Brophy et al., 2022)',btn:'오류 → cuff 제거'},
+  e7:{err:true,w:5,title:'침상 각도',see:'침상머리가 <b>0°(flat)</b>로 누워 있음.<br>처방: semi-Fowler\'s',fix:'리모컨으로 침상머리를 30~45°로 올림',why:'복강경 수술 후 반좌위 (최운정 외, 2017; 서울특별시간호사회, 2023)',btn:'오류 → 침상머리 올림'},
+  e8:{err:true,w:10,title:'Side rail · Call bell',see:'가까운 쪽 <b>side rail이 내려가 있고</b>, <b>call bell이 바닥에</b> 떨어져 있음.',fix:'side rail을 올리고 call bell을 환자 손이 닿는 곳에 둠',why:'낙상 위험 환경 관리 (의료기관평가인증원, 2026; 병원간호사회, 2019)',btn:'오류 → rail 올림·call bell 정리'},
+  n_iv:{err:false,title:'Rt. arm 말초정맥관',see:'삽입부 깨끗함, 발적·부종 없음, 고정 양호.'},
+  n_dress:{err:false,title:'하복부 드레싱',see:'투관침 부위 드레싱 — 깨끗하고 건조함.'},
+  n_fluid:{err:false,title:'수액',see:'Plasma 1 L — 처방된 수액과 동일.'},
+  n_pca:{err:false,title:'IV PCA 기기',see:'일회용 탄력식 PCA — 잔량 적절, 기기 외관 이상 없음.'},
+  n_rail:{err:false,title:'반대편 Side rail',see:'올라가 있음.'},
+  chart:{info:true,title:'처방 · 차트'},
+  patient:{info:true,title:'환자 나예민'}
+};
+const ERR_IDS=['e1','e2','e3','e4','e5','e6','e7','e8'];
+const st={running:false,t:0,found:{},fp:{},fpCount:0,e2At:null,e5At:null,timer:null,msgs:{}};
+
+const $=id=>document.getElementById(id);
+function toast(msg,ms=4500){const el=$('toast');el.innerHTML=msg;el.style.display='block';clearTimeout(el._t);el._t=setTimeout(()=>el.style.display='none',ms);}
+function fmt(s){s=Math.max(0,s);return String(Math.floor(s/60)).padStart(2,'0')+':'+String(s%60).padStart(2,'0');}
+
+function chartHTML(){return `<table>
+<tr><td>진단</td><td>Acute cholecystitis → Lap. cholecystectomy (금일)</td></tr>
+<tr><td>등록번호</td><td>10234567</td></tr>
+<tr><td>과거력</td><td>뇌경색·HTN·고지혈증 · Lt. MRM with ALND (5년 전)</td></tr>
+<tr><td>처방</td><td>Plasma 1 L <b>80 mL/hr</b><br>IV PCA (탄력식)<br>JP drain <b>음압 유지(bulb 압축)</b><br>EDBC · <b>semi-Fowler's</b> · NPO<br>V/S q1h×2 → q2h×3<br><b>Lt. arm save</b> (BP·IV·채혈 금지)</td></tr>
+<tr><td>검사</td><td>WBC 15.4↑ · Hb 10.0 · PLT 231 · AST/ALT 275/182↑ · CRP 25.2↑</td></tr>
+<tr><td>인계</td><td>도착 시 JP 혈성 20 mL</td></tr></table>`;}
+
+function openPanel(title,body,btns){
+  $('pTitle').textContent=title;$('pBody').innerHTML=body;const b=$('pBtns');b.innerHTML='';
+  btns.forEach(([label,cls,fn])=>{const x=document.createElement('button');x.className='btn '+cls;x.textContent=label;x.onclick=()=>{fn&&fn();};b.appendChild(x);});
+  $('panel').classList.remove('hidden');}
+function closePanel(){$('panel').classList.add('hidden');}
+
+window.openItem=function(id){
+  if(!st.running)return;const it=ITEMS[id];
+  if(id==='chart'){openPanel(it.title,chartHTML(),[['닫기','b-gray',closePanel]]);return;}
+  if(id==='patient'){openPanel(it.title,'"수술부위가 아파요." (찡그린 표정)<br><br>💡 환자 확인은 손목밴드와 개방형 질문으로 하세요.',[['닫기','b-gray',closePanel]]);return;}
+  if(it.err&&st.found[id]){openPanel(it.title,'<span class="ok">✔ 이미 교정함</span><br>'+it.fix,[['닫기','b-gray',closePanel]]);return;}
+  if(!it.err&&st.fp[id]){openPanel(it.title,it.see+'<br><span class="ng">이미 오류로 보고한 정상 항목입니다.</span>',[['닫기','b-gray',closePanel]]);return;}
+  openPanel(it.title,'<b>관찰:</b><br>'+it.see,[
+    [it.err?it.btn:'오류입니다','b-red',()=>report(id)],
+    ['정상입니다','b-green',closePanel],
+    ['닫기','b-gray',closePanel]]);
+};
+
+function report(id){
+  const it=ITEMS[id];
+  if(!it.err){st.fp[id]=true;st.fpCount++;
+    openPanel(it.title,'<span class="ng">✘ 정상 항목입니다 (위양성 -2점)</span><br>'+it.see,[['닫기','b-gray',closePanel]]);return;}
+  st.found[id]=st.t;applyFix(id);$('found').textContent=Object.keys(st.found).length;
+  openPanel(it.title,'<span class="ok">✔ 오류 발견 · 교정</span><br><b>중재:</b> '+it.fix+'<br><b>근거:</b> '+it.why,[['확인','b-blue',closePanel]]);
+  if(Object.keys(st.found).length===8)setTimeout(()=>toast('8개 오류를 모두 찾았습니다! [종료 · 결과]를 눌러 확인하세요.',8000),400);
+}
+
+function applyFix(id){
+  const set=(sel,a,v)=>document.querySelector(sel).setAttribute(a,v);
+  if(id==='e1')set('#band','color','#9be7a1');
+  if(id==='e2')st.e2At=st.t;
+  if(id==='e3'){set('#bulb','position','0.05 0.62 -1.97');set('#bulb','scale','1 0.55 1');
+    set('#bulbLiquid','position','0.05 0.61 -1.97');set('#bulbLiquid','scale','1 0.45 1');
+    set('#tube','position','0.05 0.74 -1.97');set('#tube','height','0.16');}
+  if(id==='e4')set('#pumpText','value','80 mL/hr'),set('#pumpText','color','#7CFC00');
+  if(id==='e5'){st.e5At=st.t;set('#clamp','color','#2a9d8f');set('#clamp','position','-0.74 1.02 -1.85');}
+  if(id==='e6'){const c=document.querySelector('#cuff');c.setAttribute('visible',false);c.classList.remove('clickable');refreshRay();}
+  if(id==='e7')set('#headrest','rotation','0 0 -35');
+  if(id==='e8'){set('#railNear','position','-0.25 0.86 -2.0');set('#bell','position','0.6 0.72 -2.2');}
+}
+function refreshRay(){document.querySelectorAll('[raycaster]').forEach(e=>{e.components.raycaster&&e.components.raycaster.refreshObjects();});}
+
+function vitals(t){
+  let v={bp:'140/80',pr:88,rr:18,nrs:6};
+  const e5ok=st.e5At!==null;
+  if(t>=180&&!(e5ok&&st.e5At<180))v={bp:'150/95',pr:98,rr:18,nrs:7};
+  if(e5ok&&t>=st.e5At+60)v.nrs=4;
+  if(st.e2At===null){
+    if(t>=480)v={bp:'90/60',pr:120,rr:28,nrs:v.nrs};
+    else if(t>=300)v={bp:'130/90',pr:110,rr:24,nrs:v.nrs};
+  }else{
+    const r=st.e2At+60;
+    if(t>=r)v=st.e2At<480?{bp:'136/88',pr:100,rr:20,nrs:v.nrs}:{bp:'100/64',pr:108,rr:24,nrs:v.nrs};
+    else if(st.e2At>=480)v={bp:'90/60',pr:120,rr:28,nrs:v.nrs};
+    else if(st.e2At>=300)v={bp:'130/90',pr:110,rr:24,nrs:v.nrs};
+  }
+  return v;
+}
+
+function tick(){
+  st.t++;const t=st.t;$('timer').textContent=fmt(LIMIT-t);
+  const v=vitals(t);const crit=v.pr>=110;
+  $('vitals').innerHTML=`BP ${v.bp} · PR ${v.pr} · RR ${v.rr} · SpO₂ 96% · NRS ${v.nrs}`;
+  $('vitals').style.color=crit?'#ff6b6b':'#fff';
+  const once=(k,c,m)=>{if(c&&!st.msgs[k]){st.msgs[k]=1;toast(m);}};
+  once('g2',t===120,'👩 보호자: "너무 아파하는 거 아니에요? 의사는 언제 와요?"');
+  once('p3',t===180&&!st.found.e5,'🧑‍⚕️ 환자가 찡그리며 신음합니다. (NRS 7)');
+  once('g5',t===300&&!st.found.e5,'👩 보호자가 PCA를 가리킵니다: "저기 이상한 것 같은데 좀 봐주세요."');
+  once('b5',t===300&&!st.found.e2,'⚠ 드레싱 oozing과 JP 배액이 늘고 있습니다.');
+  once('b8',t===480&&!st.found.e2,'⚠ 환자: "어지러워요…" 창백하고 식은땀이 납니다.');
+  once('f8',t===480&&!st.found.e8,'⚠ 환자가 스스로 일어나려 합니다! (낙상 위험)');
+  once('w8',t===480,'⏱ 2분 남았습니다.');
+  if(t>=LIMIT)finish();
+}
+
+function finish(){
+  if(!st.running)return;st.running=false;clearInterval(st.timer);closePanel();
+  let score=0,bonus=0;const rows=[];
+  ERR_IDS.forEach(id=>{const it=ITEMS[id];const ft=st.found[id];let pts=0,note='';
+    if(ft!==undefined){pts=it.w;if(id==='e5'&&ft>300){pts=it.w/2;note=' (단서 이후 50%)';}
+      if(['e2','e3','e5'].includes(id)&&ft<=300)bonus+=2;}
+    score+=pts;
+    rows.push(`<tr><td>${id.toUpperCase()}</td><td>${it.title}</td><td>${ft!==undefined?'<span class="ok">'+fmt(ft)+'</span>':'<span class="ng">미발견</span>'}</td><td>${pts}/${it.w}${note}</td></tr>`);});
+  const n=Object.keys(st.found).length,rate=(n/8*100).toFixed(1),fp=Math.min(10,st.fpCount*2);
+  const high=['e2','e3','e4','e5','e8'].every(i=>st.found[i]!==undefined);
+  $('resultBody').innerHTML=`<h2>결과</h2>
+  <table><tr><td>ID</td><td>항목</td><td>발견 시각</td><td>점수</td></tr>${rows.join('')}</table>
+  <h3>요약</h3>
+  오류 식별률: <b>${n}/8 (${rate}%)</b> ${n>=7?'<span class="ok">✔ 7/8 이상</span>':'<span class="ng">✘ 7/8 미만</span>'}<br>
+  오류 탐지 점수: <b>${score}/65</b> · 가산점(5분 내 E2·E3·E5): +${bonus} · 위양성: -${fp} (${st.fpCount}건)<br>
+  고위험 오류(E2·E3·E4·E5·E8) 모두 탐지: ${high?'<span class="ok">✔</span>':'<span class="ng">✘</span>'}<br>
+  소요 시간: ${fmt(Math.min(st.t,LIMIT))}
+  <p style="font-size:13px;color:#666">※ 연습용 프로토타입입니다. 필수 중재 체크리스트(35점)와 SBAR 평가는 디브리핑에서 관찰자가 평가합니다.</p>
+  <div class="row"><button class="btn b-green" onclick="location.reload()">다시 하기</button></div>`;
+  $('result').classList.remove('hidden');
+}
+
+$('startBtn').onclick=()=>{$('intro').classList.add('hidden');st.running=true;st.timer=setInterval(tick,1000);
+  toast('📋 왼쪽 아래 [처방·차트]로 처방을 먼저 확인하세요.');};
+$('chartBtn').onclick=()=>openItem('chart');
+$('endBtn').onclick=()=>{if(st.running&&confirm('종료하고 결과를 볼까요?'))finish();};
+</script>
+</body>
+</html>
