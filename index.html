@@ -140,7 +140,10 @@ AFRAME.registerComponent('item',{schema:{type:'string'},init(){
     <a-text id="pumpText" value="20 mL/hr" color="#ff5555" align="center" width="0.9" position="0 0 0.065"></a-text>
   </a-box>
   <!-- 정상: PCA 기기 -->
-  <a-sphere class="clickable" hoverable item="n_pca" radius="0.07" color="#f7f7f7" position="-0.78 1.48 -1.85"></a-sphere>
+  <!-- Meshy로 만든 탄력식 PCA 3D 모델 (Pump.glb). 크기·각도는 scale·rotation 숫자로 조절 -->
+  <a-entity gltf-model="url(Pump.glb)" scale="0.16 0.16 0.16" rotation="90 0 0" position="-0.74 1.42 -1.84"></a-entity>
+  <!-- 클릭용 투명 상자 (모델 자체를 클릭 대상으로 하면 태블릿에서 느려짐) -->
+  <a-box class="clickable" hoverable item="n_pca" width="0.3" height="0.26" depth="0.08" material="opacity:0;transparent:true" position="-0.74 1.42 -1.84"></a-box>
   <a-cylinder radius="0.004" height="0.6" color="#e8e8e8" position="-0.78 1.15 -1.85"></a-cylinder>
   <!-- E5: PCA clamp 잠김 -->
   <a-box id="clamp" class="clickable" hoverable item="e5" width="0.05" height="0.035" depth="0.05" color="#e63946" position="-0.78 1.02 -1.85"></a-box>
