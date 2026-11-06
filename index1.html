@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PCA + 수액폴대 미리보기 (E5)</title>
+<style>
+  html,body{margin:0;height:100%;overflow:hidden;background:#1d2024;font-family:system-ui,-apple-system,"Noto Sans KR",sans-serif;color:#eee}
+  #c{display:block;width:100%;height:100%}
+  #panel{position:absolute;left:12px;top:12px;max-width:300px;background:rgba(20,22,26,.85);border:1px solid #3a3f46;border-radius:12px;padding:12px 14px;font-size:14px;line-height:1.45}
+  #panel h1{font-size:15px;margin:0 0 6px}
+  #state{display:inline-block;margin:6px 0;padding:3px 10px;border-radius:999px;font-weight:700;background:#555}
+  #state.locked{background:#c0392b}
+  #state.open{background:#27ae60}
+  button{margin-top:6px;padding:7px 12px;border-radius:8px;border:0;background:#4a90e2;color:#fff;font-size:14px;cursor:pointer}
+  button.ghost{background:#3a3f46}
+  #hint{font-size:12px;color:#aab}
+  #loading{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:15px;color:#ccd;pointer-events:none}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="loading">3D 모델 불러오는 중…</div>
+<div id="panel">
+  <h1>E5 · IV PCA 클램프</h1>
+  <div id="msg">PCA를 클릭(터치)해서 상태를 확인하세요.</div>
+  <div id="state" hidden></div><br>
+  <button id="toggle" hidden>클램프 열기</button>
+  <button id="reset" class="ghost" hidden>처음 상태로</button>
+  <div id="hint">드래그: 회전 · 두 손가락/휠: 확대</div>
+</div>
+
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+}}
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { VRButton } from 'three/addons/webxr/VRButton.js';
+
+// ===== 파일 이름 (저장소에 올린 이름과 같게 맞춰 주세요) =====
+const POLE_FILE = 'iv_pole_with_bag.glb';
+const PCA_FILE  = 'PCA_light.glb';   // 원본을 쓰려면 'PCA.glb'
+const PCA_HEIGHT = 0.45;             // PCA 실제 크기(미터): 본체+라인 약 45cm
+
+const canvas = document.getElementById('c');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.xr.enabled = true;
+try { document.body.appendChild(VRButton.createButton(renderer)); } catch (e) {}
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x2a2e34);
+
+const camera = new THREE.PerspectiveCamera(45, 1, 0.01, 50);
+camera.position.set(1.2, 1.4, 1.6);
+const controls = new OrbitControls(camera, canvas);
+controls.target.set(0, 1.0, 0);
+controls.enableDamping = true;
+
+scene.add(new THREE.HemisphereLight(0xffffff, 0x444444, 1.4));
+const sun = new THREE.DirectionalLight(0xffffff, 1.6);
+sun.position.set(2, 4, 3);
+scene.add(sun);
+
+// 바닥
+const floor = new THREE.Mesh(new THREE.PlaneGeometry(6, 6), new THREE.MeshStandardMaterial({ color: 0xbfc4c9 }));
+floor.rotation.x = -Math.PI / 2;
+scene.add(floor);
+
+const loader = new GLTFLoader();
+let pca = null;
+let pending = 2;
+const done = () => { if (--pending === 0) document.getElementById('loading').remove(); };
+const fail = (name) => (err) => {
+  console.error(err);
+  document.getElementById('loading').textContent = name + ' 파일을 불러오지 못했어요. 파일 이름과 위치를 확인하세요.';
+};
+
+// 수액 폴대 (이미 실제 크기: 높이 약 2m)
+loader.load(POLE_FILE, (g) => { scene.add(g.scene); done(); }, undefined, fail(POLE_FILE));
+
+// PCA: Meshy 모델은 크기가 제각각이라 실제 크기로 맞춘 뒤 폴대 왼쪽에 걸어 둠
+loader.load(PCA_FILE, (g) => {
+  pca = g.scene;
+  const box = new THREE.Box3().setFromObject(pca);
+  const size = box.getSize(new THREE.Vector3());
+  pca.scale.setScalar(PCA_HEIGHT / size.y);
+  const box2 = new THREE.Box3().setFromObject(pca);
+  const center = box2.getCenter(new THREE.Vector3());
+  // 위쪽 끝이 바닥에서 1.2m 높이, 폴대에서 약간 왼쪽·앞쪽
+  pca.position.set(-0.09 - center.x, 1.2 - box2.max.y, 0.04 - center.z);
+  scene.add(pca);
+  addLabel();
+  done();
+}, undefined, fail(PCA_FILE));
+
+// PCA 라벨 (Meshy 글자는 깨지므로 코드로 붙임)
+function addLabel() {
+  const cv = document.createElement('canvas');
+  cv.width = 512; cv.height = 320;
+  const x = cv.getContext('2d');
+  x.fillStyle = '#ffffff'; x.fillRect(0, 0, 512, 320);
+  x.strokeStyle = '#888'; x.lineWidth = 6; x.strokeRect(3, 3, 506, 314);
+  x.fillStyle = '#111'; x.font = 'bold 54px sans-serif';
+  x.fillText('IV PCA', 24, 70);
+  x.font = '38px sans-serif';
+  x.fillText('나예민 / F / 60', 24, 135);
+  x.fillText('등록번호: ________', 24, 195);
+  x.fillText('조제: ____-__-__ __:__', 24, 255);
+  const tex = new THREE.CanvasTexture(cv);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  const label = new THREE.Mesh(new THREE.PlaneGeometry(0.08, 0.05), new THREE.MeshBasicMaterial({ map: tex }));
+  const b = new THREE.Box3().setFromObject(pca);
+  label.position.set((b.min.x + b.max.x) / 2, b.max.y - PCA_HEIGHT * 0.3, b.max.z + 0.003);
+  scene.add(label);
+}
+
+// ===== E5 클릭 상호작용 =====
+// 처음엔 힌트 없음(흰색 그대로). 클릭하면 잠김 확인 → 빨강, 열면 → 초록
+const stateEl = document.getElementById('state');
+const msgEl = document.getElementById('msg');
+const toggleBtn = document.getElementById('toggle');
+const resetBtn = document.getElementById('reset');
+let checked = false, opened = false;
+
+function tint(color) {
+  if (!pca) return;
+  pca.traverse((o) => {
+    if (o.isMesh) {
+      if (!o.userData.base) o.userData.base = o.material;
+      if (color === null) { o.material = o.userData.base; return; }
+      const m = o.userData.base.clone();
+      m.emissive = new THREE.Color(color);
+      m.emissiveIntensity = 0.35;
+      o.material = m;
+    }
+  });
+}
+function render() {
+  if (!checked) {
+    stateEl.hidden = true; toggleBtn.hidden = true; resetBtn.hidden = true;
+    msgEl.textContent = 'PCA를 클릭(터치)해서 상태를 확인하세요.';
+    tint(null); return;
+  }
+  stateEl.hidden = false; toggleBtn.hidden = false; resetBtn.hidden = false;
+  if (opened) {
+    stateEl.className = 'open'; stateEl.textContent = '개방됨';
+    msgEl.textContent = '클램프가 열렸어요. 기저 유량이 주입되고, 버튼을 누르면 추가 용량이 들어갑니다.';
+    toggleBtn.textContent = '클램프 다시 잠그기';
+    tint(0x27ae60);
+  } else {
+    stateEl.className = 'locked'; stateEl.textContent = '클램프 잠김';
+    msgEl.textContent = '라인 클램프가 잠겨 있어 약물이 주입되지 않고, 볼루스 버튼도 반응이 없어요. 풍선 잔량이 그대로예요.';
+    toggleBtn.textContent = '클램프 열기';
+    tint(0xc0392b);
+  }
+}
+toggleBtn.onclick = () => { opened = !opened; render(); };
+resetBtn.onclick = () => { checked = false; opened = false; render(); };
+
+const ray = new THREE.Raycaster();
+const ptr = new THREE.Vector2();
+let downAt = null;
+canvas.addEventListener('pointerdown', (e) => { downAt = [e.clientX, e.clientY]; });
+canvas.addEventListener('pointerup', (e) => {
+  if (!downAt || !pca) return;
+  const moved = Math.hypot(e.clientX - downAt[0], e.clientY - downAt[1]);
+  downAt = null;
+  if (moved > 6) return; // 드래그(회전)는 클릭으로 치지 않음
+  const r = canvas.getBoundingClientRect();
+  ptr.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
+  ray.setFromCamera(ptr, camera);
+  if (ray.intersectObject(pca, true).length) { checked = true; render(); }
+});
+
+function resize() {
+  const w = canvas.clientWidth, h = canvas.clientHeight;
+  renderer.setSize(w, h, false);
+  camera.aspect = w / h; camera.updateProjectionMatrix();
+}
+addEventListener('resize', resize); resize();
+renderer.setAnimationLoop(() => { controls.update(); renderer.render(scene, camera); });
+</script>
+</body>
+</html>
